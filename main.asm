@@ -191,6 +191,9 @@ Begin:
 	ld	a,2
 	ld	[ScrollDelay],a
 	ld	[ScrollCurrent],a
+; Clear game variables
+	xor	a
+	;TODO
 ; Enable interrupts
 	ei
 ; Game mode main loop
@@ -209,7 +212,7 @@ Begin:
 .waitdma:				; total 5x40 cycles, approx 200ms
 	dec	a          		; 1 cycle
 	jr	nz,.waitdma    		; 4 cycles
-; Scroll -- DEBUG
+; Scroll
 	ld	a,[ScrollCurrent]
 	dec	a
 	ld	[ScrollCurrent],a
@@ -246,9 +249,58 @@ Begin:
 .skipscroll:
 ; Process joypad
 	call	ReadJoypad
-	;TODO
+	ld	de,0
+	ld	c,a
+	and	$80			; Down pressed?
+	jr	z,.gamemainJoy1
+	inc	e
+.gamemainJoy1:
+	ld	a,c
+	and	$40			; Up pressed?
+	jr	z,.gamemainJoy2
+	dec	e
+.gamemainJoy2:
+	ld	a,c
+	and	$20			; Left pressed?
+	jr	z,.gamemainJoy3
+	dec	d
+.gamemainJoy3:
+	ld	a,c
+	and	$10			; Right pressed?
+	jr	z,.gamemainJoy4
+	inc	d
+.gamemainJoy4:
+; Analyse Y movement delta value
+	ld	a,e
+	or	a
+	jr	z,.gamemainMove1
+	ld	hl,SpriteTable
+	ld	b,[hl]			; Get boat Y position
+	add	a,b
+	ld	[hl],a			; Save updated Y position
+	inc	hl
+	inc	hl
+	inc	hl
+	inc	hl
+	ld	[hl],a			; Save updated Y position for the 2nd sprite
+.gamemainMove1:
+; Analyse X movement delta value
+	ld	a,d
+	or	a
+	jr	z,.gamemainMove2
+	ld	hl,SpriteTable + 1
+	ld	b,[hl]			; Get boat X position
+	add	a,b
+	ld	[hl],a			; Save updated X position
+	inc	hl
+	inc	hl
+	inc	hl
+	inc	hl
+	add	a,8
+	ld	[hl],a			; Save updated X position for the 2nd sprite
+.gamemainMove2:
 ; Continue game main loop	
-        jr      .gamemainloop
+        jp      .gamemainloop
 
 ;------------------------------------------------------------------------------
 ; VBlank Interrupt Routine
@@ -342,7 +394,7 @@ StopLCD:
         
 ;------------------------------------------------------------------------------
 ; Read Joypad data
-; Output: a - high bits:A,B,SEL,STRT, low bits:Up,Dn,Lt,Rt
+; Output: a - high bits:Dn,Up,Lt,Rt, low bits:Start,Select,B,A
 ; Uses:   b
 ReadJoypad:
 	ld	a,$20
