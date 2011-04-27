@@ -6,7 +6,7 @@
 ; Define . and X to be 0 and 1
         OPT     b.X
 
-SpritesCount	EQU	9
+SpritesCount	EQU	19
 
 Sprites:
 SpriteEmpty:
@@ -90,6 +90,96 @@ SpriteGun:
 	DB	%.....X..
 	DB	%......X.
 	DB	%.......X
+SpriteBullet:
+	DB	%........
+	DB	%.X......
+	DB	%..X.....
+	DB	%........
+	DB	%........
+	DB	%........
+	DB	%........
+	DB	%........
+SpriteLaser:
+	DB	%XXXXXXXX
+	DB	%X.X..XXX
+	DB	%XXXXXXXX
+	DB	%.X...XX.
+	DB	%.XXXXXX.
+	DB	%..X..X..
+	DB	%..XXXX..
+	DB	%...XX...
+SpriteBeam:
+	DB	%....X...
+	DB	%...X....
+	DB	%....X...
+	DB	%.....X..
+	DB	%....X...
+	DB	%...X....
+	DB	%....X...
+	DB	%.....X..
+SpriteShip1:
+	DB	%........
+	DB	%........
+	DB	%....XXXX
+	DB	%XXX.X.XX
+	DB	%.XXXXXXX
+	DB	%..XXXXXX
+	DB	%...XXXXX
+	DB	%....XXXX
+SpriteShip2:
+	DB	%..XXXX..
+	DB	%..XXXX..
+	DB	%X.X.....
+	DB	%X.X...XX
+	DB	%XXXXXXXX
+	DB	%XXXXXXXX
+	DB	%XXXXXXX.
+	DB	%XXXXXX..
+SpriteBomb:
+	DB	%........
+	DB	%.XXXXXX.
+	DB	%X.XXXXXX
+	DB	%XXXXXXXX
+	DB	%XXXXXXXX
+	DB	%.XXXXXX.
+	DB	%........
+	DB	%........
+SpriteRock:
+	DB	%XXXXXXXX
+	DB	%XXXXXXXX
+	DB	%XXXXXXX.
+	DB	%.XXXXXX.
+	DB	%.X.XXXX.
+	DB	%...XX.X.
+	DB	%...XX...
+	DB	%...X....
+SpriteReactor1:
+	DB	%........
+	DB	%......XX
+	DB	%....XXX.
+	DB	%..XXX.X.
+	DB	%..X.X.X.
+	DB	%.XX.X.X.
+	DB	%.XX.X.X.
+	DB	%.XXXXXXX
+SpriteReactor2:
+	DB	%........
+	DB	%XX......
+	DB	%.XXX....
+	DB	%.X.XXX..
+	DB	%.X.X.X..
+	DB	%.X.X.XX.
+	DB	%.X.X.XX.
+	DB	%XXXXXXX.
+SpriteShield:
+	DB	%.XX..X..
+	DB	%.X.X.X..
+	DB	%.X..XX..
+	DB	%.X...X..
+	DB	%.XX..X..
+	DB	%.X.X.X..
+	DB	%.X..XX..
+	DB	%.X...X..
 
 
         POPO
