@@ -45,6 +45,10 @@ LandscapeRows	EQU	15
 LandscapeCols	EQU	(LandscapeDataEnd - LandscapeData) / LandscapeRows
 LCDCF_NORMNOWIN	EQU	LCDCF_ON|LCDCF_BG8000|LCDCF_BG9800|LCDCF_BGON|LCDCF_OBJ8|LCDCF_OBJON|LCDCF_WIN9C00|LCDCF_WINOFF
 LCDCF_NORMWIN	EQU	LCDCF_ON|LCDCF_BG8000|LCDCF_BG9800|LCDCF_BGON|LCDCF_OBJ8|LCDCF_OBJON|LCDCF_WIN9C00|LCDCF_WINON
+BoatWaterLevel	EQU	43
+BoatLowerLevel	EQU	139
+BoatLeftEdge	EQU	8
+BoatRightEdge	EQU	140
 
 ;------------------------------------------------------------------------------
 ; Starting point
@@ -277,6 +281,14 @@ Begin:
 	ld	hl,SpriteTable
 	ld	b,[hl]			; Get boat Y position
 	add	a,b
+	cp	BoatWaterLevel		; Above water level?
+	jr	nc,.gamemainTop		; No
+	ld	a,BoatWaterLevel	; Fix to water level
+.gamemainTop:
+	cp	BoatLowerLevel		; Below lower level?
+	jr	c,.gamemainBottom	; No
+	ld	a,BoatLowerLevel	; Fix to lower level
+.gamemainBottom:
 	ld	[hl],a			; Save updated Y position
 	inc	hl
 	inc	hl
@@ -291,6 +303,14 @@ Begin:
 	ld	hl,SpriteTable + 1
 	ld	b,[hl]			; Get boat X position
 	add	a,b
+	cp	BoatLeftEdge		; Too left?
+	jr	nc,.gamemainLeft	; No
+	ld	a,BoatLeftEdge		; Fix to left position
+.gamemainLeft:
+	cp	BoatRightEdge		; Too right?
+	jr	c,.gamemainRight	; No
+	ld	a,BoatRightEdge		; Fix to right position
+.gamemainRight:
 	ld	[hl],a			; Save updated X position
 	inc	hl
 	inc	hl
