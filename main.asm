@@ -18,9 +18,12 @@
 ; Variables
 	SECTION "Vars",BSS
 SpriteTable     DS      160	; Sprite data prepared
-ScrollDelay	DB
-ScrollCurrent	DB
+ScrollDelay	DB		; Scrolling delay
+ScrollCurrent	DB		; Scrolling count
 NextColumnAddr	DW		; Address of landscape data for the next column
+JoypadData	DB		; Last value read from joypad port
+HighScore	DW		; Current score value
+Score		DW		; Current score value
 
 ;------------------------------------------------------------------------------
 ; Code & data section start
@@ -37,10 +40,13 @@ NextColumnAddr	DW		; Address of landscape data for the next column
 	INCLUDE "font.inc"
 	INCLUDE "sprites.inc"
 	INCLUDE "tileland.inc"
+
 	INCLUDE "landscape.inc"
+	DB	$ff		; Marker "end of the landscape
 
 ;------------------------------------------------------------------------------
 ; Additional defines
+DMACODELOC	EQU	$ff80
 LandscapeRows	EQU	15
 LandscapeCols	EQU	(LandscapeDataEnd - LandscapeData) / LandscapeRows
 LCDCF_NORMNOWIN	EQU	LCDCF_ON|LCDCF_BG8000|LCDCF_BG9800|LCDCF_BGON|LCDCF_OBJ8|LCDCF_OBJON|LCDCF_WIN9C00|LCDCF_WINOFF
@@ -55,13 +61,18 @@ BoatRightEdge	EQU	140
 Begin:
         di				; Disable interrupts
         ld      sp,$ffff		; Initialize the stack
-;
-        call    StopLCD			; Turn off the screen
-;
+; Prepare DMA code
+	call	InitDma
+; Turn off the screen
+        call    StopLCD
+; Default palette
         ld      a,$e4
         ld      [rBGP],a        	; Setup the default background palette
+; Turn off the sound
+	xor	a
+	ld	[rNR50],a
 
-; Set scroll to upper left corner
+; Set scroll registers to upper left corner
         xor     a
         ld      [rSCX],a
         ld      [rSCY],a
@@ -108,8 +119,9 @@ Begin:
 	ld	hl,SpriteTable
 	ld	bc,160
 	call	mem_Set
+	call	DMACODELOC		; Update sprites in DMA
 
-; DEBUG: Show sprite for the boat
+; Prepare sprite for the boat
 	ld	hl,SpriteTable
 	ld	[hl],4+39		; Y pos
 	inc	hl
@@ -130,26 +142,26 @@ Begin:
 	inc	hl
 
 ; Draw strings on the window
-        ld      hl,StrBoats
-	ld	de, $0001		; line 0, column 1
-        ld      bc,4
+        ld      hl,StrWindowRows1
+	ld	de, $0000		; line 0, column 0
+        ld      bc,20
 	call	DrawString
-        ld      hl,StrHighScore
-	ld	de, $000A		; line 0, column 10
-        ld      bc,10
+        ld      hl,StrWindowRows2
+	ld	de, $0100		; line 1, column 0
+        ld      bc,20
 	call	DrawString
-        ld      hl,Str000000
-	ld	de, $0102		; line 1, column 2
-        ld      bc,6
-	call	DrawString
-        ld      hl,Str000000
-	ld	de, $010C		; line 1, column 12
-        ld      bc,6
-	call	DrawString
-        ld      hl,StrAir
+        ld      hl,StrWindowRows3
 	ld	de, $0200		; line 2, column 0
-        ld      bc,4
+        ld      bc,20
 	call	DrawString
+; Draw high score
+	ld	a,[HighScore]
+	ld	l,a
+	ld	a,[HighScore+1]
+	ld	h,a
+	ld	de, $010C		; line 1, column 12
+	call	DrawWord
+
 ; Draw air level
 	ld	a,5
 	ld	hl,$9C00 + SCRN_VX_B * 2 + 4
@@ -176,6 +188,7 @@ Begin:
 ; Menu mode main loop
 .menumainloop:
 	halt
+	nop				; Sometimes an instruction after halt is skipped
 	ld	a,[rSTAT]		; Check Mode flags
 	and	3
 	cp	1			; VBlank?
@@ -183,13 +196,13 @@ Begin:
 ; Check joypad state
 	call	ReadJoypad
 	and	$08			; Start button pressed?
-	jp	nz,.startgamemode	; Yes, start the game
+	jp	nz,StartGameMode	; Yes, start the game
 ; Continue menu main loop	
         jr      .menumainloop
 
 ;------------------------------------------------------------------------------
 ; Prepare game mode
-.startgamemode:
+StartGameMode:
 	di
 ; Prepare scroll
 	ld	a,2
@@ -197,25 +210,22 @@ Begin:
 	ld	[ScrollCurrent],a
 ; Clear game variables
 	xor	a
+	ld	[Score],a
+	ld	[Score+1],a
 	;TODO
-; Enable interrupts
-	ei
 ; Game mode main loop
+	ei				; Enable interrupts
 .gamemainloop:
 	halt				; Wait for a next interrupt
+	nop				; Sometimes an instruction after halt is skipped
 .gamemainloop2:
 	ld	a,[rSTAT]		; Check Mode flags
 	and	3
 	cp	1			; VBlank?
-	jr	nz,.gamemainloop2	; No, keep waiting
+	jr	nz,.gamemainloop	; No, keep waiting
 ; VBlank mode processing
 ; Copy SpritesTable to OAM using DMA
-	ld      a,$c0			; SpriteTable/256
-	ld	[rDMA],a		; during this time the CPU can access only HRAM
-	ld	a,$28			; delay
-.waitdma:				; total 5x40 cycles, approx 200ms
-	dec	a          		; 1 cycle
-	jr	nz,.waitdma    		; 4 cycles
+	call	DMACODELOC
 ; Scroll
 	ld	a,[ScrollCurrent]
 	dec	a
@@ -253,6 +263,7 @@ Begin:
 .skipscroll:
 ; Process joypad
 	call	ReadJoypad
+	ld	[JoypadData],a		; Store last joypad data read from port
 	ld	de,0
 	ld	c,a
 	and	$80			; Down pressed?
@@ -319,8 +330,49 @@ Begin:
 	add	a,8
 	ld	[hl],a			; Save updated X position for the 2nd sprite
 .gamemainMove2:
+; Check for fire button
+	ld	a,[JoypadData]
+	and	$01			; "A" button pressed?
+	jr	z,.gamemainNoFire	; No
+	;TODO: Create a new torpedo object
+.gamemainNoFire:
+; TODO: Move objects: ship, mines, torpedos, bullets, bombs
+; TODO: Check for collisions
+; Draw current score value
+	ld	a,[Score]
+	ld	l,a
+	ld	a,[Score+1]
+	ld	h,a
+	ld	de, $0102		; line 1, column 2
+	call	DrawWord
+; Wait for end of VBlank
+.gamemainWaitVEnd:
+	ld	a,[rSTAT]		; Check Mode flags
+	and	3
+	cp	1			; VBlank?
+	jr	z,.gamemainWaitVEnd	; Yes, keep waiting
 ; Continue game main loop	
-        jp      .gamemainloop
+        jp      .gamemainloop2
+
+;------------------------------------------------------------------------------
+; DMA related code
+InitDma:				; Prepare DMA code in HRAM
+ 	ld	de, DMACODELOC
+ 	ld	hl, DmaCode
+ 	ld	bc, DmaEnd - DmaCode
+ 	call	mem_CopyVRAM		; Copy when VRAM is available
+ 	ret
+DmaCode:
+ 	push	af
+ 	ld	a, $C0			; Bank where OAM DATA is stored
+ 	ldh	[rDMA], a		; Start DMA
+ 	ld	a, $28			; 160ns
+.dmawait:
+ 	dec	a
+ 	jr	nz, .dmawait
+ 	pop	af
+ 	ret
+DmaEnd:
 
 ;------------------------------------------------------------------------------
 ; VBlank Interrupt Routine
@@ -363,14 +415,12 @@ IntLCDStat:
 
 ;------------------------------------------------------------------------------
 ; String constants
-StrHighScore:
-	DB      "HIGH SCORE"
-StrBoats:
-	DB      6,7,":5"
-Str000000:
-	DB      "000000"
-StrAir:
-	DB      "AIR:"
+StrWindowRows1:
+	DB      " ",6,7,":0     HIGH SCORE"
+StrWindowRows2:
+	DB      "  000000    000000  "
+StrWindowRows3:
+	DB      "AIR:                "
 
 ;------------------------------------------------------------------------------
 ; Draw string to window
@@ -455,8 +505,7 @@ PrepareLandscapeFirst32:
 	ld	[hl],a
 	inc	de
 	push	bc
-	ld	b,0
-	ld	c,SCRN_VX_B
+	ld	bc,SCRN_VX_B
 	add	hl,bc
 	pop	bc
 	dec	b
@@ -475,22 +524,88 @@ PrepareLandscapeFirst32:
 PrepareLandscapeNext:
 	ld	b,LandscapeRows
 	ld	c,0
-	push	bc
-	ld	b,0
-	add	hl,bc
-	pop	bc
 .nlandscape2:
 	ld	a,[de]
 	ld	[hl],a
 	inc	de
 	push	bc
-	ld	b,0
-	ld	c,SCRN_VX_B
+	ld	bc,SCRN_VX_B
 	add	hl,bc
 	pop	bc
 	dec	b
 	jr	nz,.nlandscape2
 	ret
+
+;------------------------------------------------------------------------------
+; Draw word value on the screen
+; Input: hl - number to print, de - line and column
+DrawWord:
+	push	hl
+	ld	a,d
+	ld	h,$9C			; $9C00 - window tile map starting address
+	ld	l,e
+	ld	de, SCRN_VX_B
+	or	a
+.drawwordloop:
+	jr	z,PrintWord
+	add	hl, de
+	dec	a
+	jr	nz,.drawwordloop
+	ld	b,h
+	ld	c,l
+	pop	hl
+; do nothing: we just go to PrintWord procedure in the DrawWord procedure
+;------------------------------------------------------------------------------
+; Print word value as decimal number, five digits (00000-65535)
+; Input:  hl - number to print, bc - address on the screen
+; Uses:   af,de
+PrintWord:
+	ld	a,4		; Number of digits to print minus 1
+.pdw1:
+	push	bc
+	push	hl
+	ld	hl,PrintWordTable
+	ld	b,0
+	ld	c,a
+	add	hl,bc
+	add	hl,bc
+	ld      e,[hl]		; Get next table value
+	inc	hl
+        ld      d,[hl]
+        pop	hl
+        pop	bc
+; Loop for one digit
+        push	af
+        xor     a		; Clear counter and flag C
+.pdw2:
+	inc     a		; Increase counter
+        add     hl,de		; Add table value
+        jr      c,.pdw2    	; Repeat while hl>=0
+        add     a,$30 - 1	; Translate to digit character
+	ld	[bc],a		; Print the character
+	inc	bc
+; Substract DE from HL
+	ld	a,l
+	sub	e
+	ld	l,a
+	ld	a,h
+	sbc	d
+	ld	h,a
+;
+	pop	af
+        dec	a
+        jr	nz,.pdw1	; Digits loop
+; Print the reminder
+	ld	a,l
+        add     a,$30		; Translate to digit character
+	ld	[bc],a		; Print the character
+	ret
+PrintWordTable:
+	DW	65536-1
+	DW	65536-10
+	DW	65536-100
+	DW	65536-1000
+	DW	65536-10000
 
 ;------------------------------------------------------------------------------
 ;* End of File *
