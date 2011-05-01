@@ -73,13 +73,6 @@ Begin:
 	xor	a
 	ld	[rNR50],a
 
-; Set scroll registers to upper left corner
-        xor     a
-        ld      [rSCX],a
-        ld      [rSCY],a
-        ld      [rWY],a
-	ld	a,7
-        ld      [rWX],a
 ; Clear variables RAM at C000-CFFF
 	xor	a
 	ld	hl,$C000
@@ -90,22 +83,21 @@ Begin:
         ld      hl,$8000
         ld      bc,$1800
         call    mem_Set
-; Prepare font tiles, 64 characters
-        ld      hl,FontData
-        ld      de,$8000 + 16 * 32
-        ld      bc,8 * 64       	; length (8 bytes per tile) x (64 tiles)
-        call    mem_CopyMono    	; Copy tile data to memory
 ; Prepare sprite tiles
 	ld	hl,Sprites
 	ld	de,$8000
 	ld	bc,8 * SpritesCount
+        call    mem_CopyMono    	; Copy tile data to memory
+; Prepare font tiles, 64 characters
+        ld      hl,FontData
+        ld      de,$8000 + 16 * 32
+        ld      bc,8 * 64       	; length (8 bytes per tile) x (64 tiles)
         call    mem_CopyMono    	; Copy tile data to memory
 ; Prepare landscape tiles, 96 tiles
         ld      hl,LandscapeTiles
         ld      de,$8000 + 16 * 128
         ld      bc,8 * 96       	; length (8 bytes per tile) x (96 tiles)
         call    mem_CopyMono    	; Copy tile data to memory
-
 ; Clear the canvas
         xor     a			; Clear background tile map memory
         ld      hl,$9800
@@ -121,6 +113,13 @@ Begin:
 	ld	bc,160
 	call	mem_Set
 	call	DMACODELOC		; Update sprites in DMA
+; Set scroll registers to upper left corner
+        xor     a
+        ld      [rSCX],a
+        ld      [rSCY],a
+        ld      [rWY],a
+	ld	a,7
+        ld      [rWX],a
 
 ; Prepare sprite for the boat
 	ld	hl,SpriteTable
@@ -162,12 +161,6 @@ Begin:
 	ld	h,a
 	ld	bc, $9C00+SCRN_VX_B+12	; line 1, column 12
 	call	PrintWord
-
-;; Draw air level
-;	ld	a,5
-;	ld	hl,$9C00 + SCRN_VX_B * 2 + 4
-;	ld	bc,14
-;	call    mem_Set
         
 ; Prepare first 32 columns of the landscape
 	ld	de,LandscapeData
