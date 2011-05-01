@@ -24,6 +24,7 @@ NextColumnAddr	DW		; Address of landscape data for the next column
 JoypadData	DB		; Last value read from joypad port
 HighScore	DW		; Current score value
 Score		DW		; Current score value
+AirLevel	DB		; Current air level: 0..128
 
 ;------------------------------------------------------------------------------
 ; Code & data section start
@@ -143,30 +144,30 @@ Begin:
 
 ; Draw strings on the window
         ld      hl,StrWindowRows1
-	ld	de, $0000		; line 0, column 0
+	ld	de, $9C00		; line 0, column 0
         ld      bc,20
-	call	DrawString
+	call	mem_Copy
         ld      hl,StrWindowRows2
-	ld	de, $0100		; line 1, column 0
+	ld	de, $9C00+SCRN_VX_B	; line 1, column 0
         ld      bc,20
-	call	DrawString
+	call	mem_Copy
         ld      hl,StrWindowRows3
-	ld	de, $0200		; line 2, column 0
+	ld	de, $9C00+SCRN_VX_B*2	; line 2, column 0
         ld      bc,20
-	call	DrawString
+	call	mem_Copy
 ; Draw high score
 	ld	a,[HighScore]
 	ld	l,a
 	ld	a,[HighScore+1]
 	ld	h,a
-	ld	de, $010C		; line 1, column 12
-	call	DrawWord
+	ld	bc, $9C00+SCRN_VX_B+12	; line 1, column 12
+	call	PrintWord
 
-; Draw air level
-	ld	a,5
-	ld	hl,$9C00 + SCRN_VX_B * 2 + 4
-	ld	bc,14
-        call    mem_Set
+;; Draw air level
+;	ld	a,5
+;	ld	hl,$9C00 + SCRN_VX_B * 2 + 4
+;	ld	bc,14
+;	call    mem_Set
         
 ; Prepare first 32 columns of the landscape
 	ld	de,LandscapeData
@@ -187,7 +188,7 @@ Begin:
         ei
 ; Menu mode main loop
 .menumainloop:
-	halt
+;	halt
 	nop				; Sometimes an instruction after halt is skipped
 	ld	a,[rSTAT]		; Check Mode flags
 	and	3
@@ -212,11 +213,13 @@ StartGameMode:
 	xor	a
 	ld	[Score],a
 	ld	[Score+1],a
+	ld	a,128
+	ld	[AirLevel],a
 	;TODO
 ; Game mode main loop
 	ei				; Enable interrupts
 .gamemainloop:
-	halt				; Wait for a next interrupt
+;	halt				; Wait for a next interrupt
 	nop				; Sometimes an instruction after halt is skipped
 .gamemainloop2:
 	ld	a,[rSTAT]		; Check Mode flags
@@ -247,9 +250,9 @@ StartGameMode:
 	ld	d,[hl]			; Get NextColumnAddr
 	ld	hl,$9800 + SCRN_VX_B * 2
 	ld	a,c
-	rra
-	rra
-	rra				; Divide by 8
+	srl	a
+	srl	a
+	srl	a			; Divide by 8
 	dec	a
 	and	$1f
 	ld	c,a
@@ -343,8 +346,10 @@ StartGameMode:
 	ld	l,a
 	ld	a,[Score+1]
 	ld	h,a
-	ld	de, $0102		; line 1, column 2
-	call	DrawWord
+	ld	bc, $9C00+SCRN_VX_B+2		; line 1, column 2
+	call	PrintWord
+; Show air level
+	call	ShowAirLevel
 ; Wait for end of VBlank
 .gamemainWaitVEnd:
 	ld	a,[rSTAT]		; Check Mode flags
@@ -421,28 +426,6 @@ StrWindowRows2:
 	DB      "  000000    000000  "
 StrWindowRows3:
 	DB      "AIR:                "
-
-;------------------------------------------------------------------------------
-; Draw string to window
-; Input: hl - string address, bc - string length, de - line and column.
-DrawString:
-	push	hl
-	ld	a,d
-	ld	h,$9C			; $9C00 - window tile map starting address
-	ld	l,e
-	ld	de, SCRN_VX_B
-	or	a
-.loopline:
-	jr	z,.copystr
-	add	hl, de
-	dec	a
-	jr	nz,.loopline
-.copystr
-	ld	d,h
-	ld	e,l
-	pop	hl
-        call    mem_Copy
-	ret
 
 ;------------------------------------------------------------------------------
 ; Turn off the LCD display
@@ -537,25 +520,6 @@ PrepareLandscapeNext:
 	ret
 
 ;------------------------------------------------------------------------------
-; Draw word value on the screen
-; Input: hl - number to print, de - line and column
-DrawWord:
-	push	hl
-	ld	a,d
-	ld	h,$9C			; $9C00 - window tile map starting address
-	ld	l,e
-	ld	de, SCRN_VX_B
-	or	a
-.drawwordloop:
-	jr	z,PrintWord
-	add	hl, de
-	dec	a
-	jr	nz,.drawwordloop
-	ld	b,h
-	ld	c,l
-	pop	hl
-; do nothing: we just go to PrintWord procedure in the DrawWord procedure
-;------------------------------------------------------------------------------
 ; Print word value as decimal number, five digits (00000-65535)
 ; Input:  hl - number to print, bc - address on the screen
 ; Uses:   af,de
@@ -606,6 +570,43 @@ PrintWordTable:
 	DW	65536-100
 	DW	65536-1000
 	DW	65536-10000
+
+;------------------------------------------------------------------------------
+; Update air level indicator
+ShowAirLevel:
+; Draw solid part
+	ld	a,[AirLevel]
+	srl	a
+	srl	a
+	srl	a		; Divide by 8
+	ld	c,a
+	ld	b,0
+	ld	a,5		; Tile for air
+	ld	hl,$9c00+SCRN_VX_B*2+4
+	call	mem_Set
+	ld	c,a
+	ld	a,16
+	sub	c
+	jr	z,.airnofiller
+	ld	c,a
+	ld	b,0
+	xor	a		; Tile for empty space
+	call	mem_Set
+.airnofiller:
+; Draw reminder
+	ld	a,[AirLevel]
+	and	$07
+	jr	z,.airend
+	ld	c,a
+	scf
+.airremloop:
+	rra
+	dec	c
+	jr	nz,.airremloop
+	;TODO: Prepare the tile
+	;ld	[hl],$15
+.airend:
+	ret
 
 ;------------------------------------------------------------------------------
 ;* End of File *
