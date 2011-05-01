@@ -27,6 +27,31 @@ Score		DW		; Current score value
 AirLevel	DB		; Current air level: 0..128
 
 ;------------------------------------------------------------------------------
+; Data section
+SECTION "Org Bank1",CODE,BANK[1]
+	INCLUDE "sprites.inc"
+	INCLUDE "tileland.inc"
+	INCLUDE "font.inc"
+
+	INCLUDE "landscape.inc"
+	DB	$ff		; Marker "end of the landscape
+
+; Sprites data prepared
+SpritesDataPrepared:
+;		Y pos	X pos	Tile	Attrs
+	DB	4+39,	20,	6,	0	; Boat 1st tile
+	DB	4+39,	20+8,	7,	0	; Boat 2nd tile
+SpritesDataPreparedEnd:
+
+; String constants
+StrWindowRows1:
+	DB      " ",6,7,":0     HIGH SCORE"
+StrWindowRows2:
+	DB      "  000000    000000  "
+StrWindowRows3:
+	DB      "AIR:                "
+
+;------------------------------------------------------------------------------
 ; Code & data section start
         SECTION "Org $100",HOME[$100]
         nop
@@ -37,13 +62,6 @@ AirLevel	DB		; Current air level: 0..128
 ;------------------------------------------------------------------------------
 ; Additional includes
         INCLUDE "memory.asm"
-
-	INCLUDE "font.inc"
-	INCLUDE "sprites.inc"
-	INCLUDE "tileland.inc"
-
-	INCLUDE "landscape.inc"
-	DB	$ff		; Marker "end of the landscape
 
 ;------------------------------------------------------------------------------
 ; Additional defines
@@ -176,7 +194,7 @@ Begin:
 	jr	nz,.menumainloop
 ; Check joypad state
 	call	ReadJoypad
-	and	$08			; Start button pressed?
+	bit	PADB_START,a			; Start button pressed?
 	jp	nz,StartGameMode	; Yes, start the game
 ; Continue menu main loop	
         jr      .menumainloop
@@ -274,23 +292,19 @@ StartGameMode:
 	call	ReadJoypad
 	ld	[JoypadData],a		; Store last joypad data read from port
 	ld	de,0
-	ld	c,a
-	and	$80			; Down pressed?
+	bit	PADB_DOWN,a		; Down pressed?
 	jr	z,.gamemainJoy1
 	inc	e
 .gamemainJoy1:
-	ld	a,c
-	and	$40			; Up pressed?
+	bit	PADB_UP,a		; Up pressed?
 	jr	z,.gamemainJoy2
 	dec	e
 .gamemainJoy2:
-	ld	a,c
-	and	$20			; Left pressed?
+	bit	PADB_LEFT,a		; Left pressed?
 	jr	z,.gamemainJoy3
 	dec	d
 .gamemainJoy3:
-	ld	a,c
-	and	$10			; Right pressed?
+	bit	PADB_RIGHT,a		; Right pressed?
 	jr	z,.gamemainJoy4
 	inc	d
 .gamemainJoy4:
@@ -423,23 +437,6 @@ IntLCDStat:
 .intlcdstatExit:
 	pop	af
 	reti
-
-;------------------------------------------------------------------------------
-; Sprites data prepared
-SpritesDataPrepared:
-;		Y pos	X pos	Tile	Attrs
-	DB	4+39,	20,	6,	0	; Boat 1st tile
-	DB	4+39,	20+8,	7,	0	; Boat 2nd tile
-SpritesDataPreparedEnd:
-
-;------------------------------------------------------------------------------
-; String constants
-StrWindowRows1:
-	DB      " ",6,7,":0     HIGH SCORE"
-StrWindowRows2:
-	DB      "  000000    000000  "
-StrWindowRows3:
-	DB      "AIR:                "
 
 ;------------------------------------------------------------------------------
 ; Turn off the LCD display
