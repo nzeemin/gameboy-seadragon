@@ -13,6 +13,14 @@
 	jp	IntVBlank
         SECTION "Org $48",HOME[$48]
         jp      IntLCDStat
+        SECTION "Org $50",HOME[$50]	; Timer overflow IRQ
+        reti
+        SECTION "Org $58",HOME[$58]	; Serial IRQ
+        reti
+        SECTION "Org $60",HOME[$60]
+        reti
+        SECTION "Org $68",HOME[$68]
+        DS	$98		; Filler, to prevent use of the area
 
 ;------------------------------------------------------------------------------
 ; Variables
@@ -36,11 +44,45 @@ SECTION "Org Bank1",CODE,BANK[1]
 	INCLUDE "landscape.inc"
 	DB	$ff		; Marker "end of the landscape
 
-; Sprites data prepared
+; Sprites data prepared for game mode
 SpritesDataPrepared:
 ;		Y pos	X pos	Tile	Attrs
 	DB	4+39,	20,	6,	0	; Boat 1st tile
 	DB	4+39,	20+8,	7,	0	; Boat 2nd tile
+	DB	0,	0,	12,	0	; Ship 1st tile
+	DB	0,	0,	13,	0	; Ship 2nd tile
+	DB	0,	0,	2,	0	; Torpedo 1
+	DB	0,	0,	2,	0	; Torpedo 2
+	DB	0,	0,	2,	0	; Torpedo 3
+	DB	0,	0,	2,	0	; Torpedo 4
+	DB	0,	0,	2,	0	; Torpedo 5
+	DB	0,	0,	2,	0	; Torpedo 6
+	DB	0,	0,	3,	0	; Mine 1
+	DB	0,	0,	3,	0	; Mine 2
+	DB	0,	0,	3,	0	; Mine 3
+	DB	0,	0,	3,	0	; Mine 4
+	DB	0,	0,	3,	0	; Mine 5
+	DB	0,	0,	3,	0	; Mine 6
+	DB	0,	0,	3,	0	; Mine 7
+	DB	0,	0,	3,	0	; Mine 8
+	DB	0,	0,	9,	0	; Bullet 1
+	DB	0,	0,	9,	0	; Bullet 2
+	DB	0,	0,	9,	0	; Bullet 3
+	DB	0,	0,	9,	0	; Bullet 4
+	DB	0,	0,	9,	0	; Bullet 5
+	DB	0,	0,	9,	0	; Bullet 6
+	DB	0,	0,	9,	0	; Bullet 7
+	DB	0,	0,	9,	0	; Bullet 8
+	DB	0,	0,	14,	0	; Bomb 1
+	DB	0,	0,	14,	0	; Bomb 2
+	DB	0,	0,	14,	0	; Bomb 3
+	DB	0,	0,	14,	0	; Bomb 4
+	DB	0,	0,	14,	0	; Bomb 5
+	DB	0,	0,	14,	0	; Bomb 6
+	DB	0,	0,	15,	0	; Rock 1
+	DB	0,	0,	15,	0	; Rock 2
+	DB	0,	0,	15,	0	; Rock 3
+	DB	0,	0,	15,	0	; Rock 4
 SpritesDataPreparedEnd:
 
 ; String constants
@@ -52,16 +94,16 @@ StrWindowRows3:
 	DB      "AIR:                "
 
 ;------------------------------------------------------------------------------
+; Additional includes
+        INCLUDE "memory.asm"
+
+;------------------------------------------------------------------------------
 ; Code & data section start
         SECTION "Org $100",HOME[$100]
         nop
         jp      Begin
 ; Cart header
         ROM_HEADER      ROM_NOMBC, ROM_SIZE_32KBYTE, RAM_SIZE_0KBYTE
-
-;------------------------------------------------------------------------------
-; Additional includes
-        INCLUDE "memory.asm"
 
 ;------------------------------------------------------------------------------
 ; Additional defines
@@ -79,7 +121,7 @@ BoatRightEdge	EQU	140
 ; Starting point
 Begin:
         di				; Disable interrupts
-        ld      sp,$ffff		; Initialize the stack
+        ld      sp,$fffe		; Initialize the stack
 ; Prepare DMA code
 	call	InitDma
 ; Turn off the screen
@@ -90,12 +132,6 @@ Begin:
 ; Turn off the sound
 	xor	a
 	ld	[rNR50],a
-
-; Clear variables RAM at C000-CFFF
-	xor	a
-	ld	hl,$C000
-	ld	bc,$1000
-	call    mem_Set
 ; Clear tiles memory
         xor     a
         ld      hl,$8000
@@ -117,35 +153,10 @@ Begin:
         ld      bc,8 * 96       	; length (8 bytes per tile) x (96 tiles)
         call    mem_CopyMono    	; Copy tile data to memory
 ; Clear the canvas
-        xor     a			; Clear background tile map memory
+        xor     a			; Clear background and window tile map memory
         ld      hl,$9800
-        ld      bc,SCRN_VX_B * SCRN_VY_B
+        ld      bc,$0800		; Clear area $9800-$9fff
         call    mem_Set
-        xor     a			; Clear window tile map memory
-        ld      hl,$9C00
-        ld      bc,SCRN_VX_B * SCRN_VY_B
-        call    mem_Set
-; Set scroll registers to upper left corner
-        xor     a
-        ld      [rSCX],a
-        ld      [rSCY],a
-        ld      [rWY],a
-	ld	a,7
-        ld      [rWX],a
-
-; Clear SpriteTable
-	xor	a
-	ld	hl,SpriteTable
-	ld	bc,160
-	call	mem_Set
-; Prepare sprites
-	ld	hl,SpritesDataPrepared
-	ld	de,SpriteTable
-	ld	bc,SpritesDataPreparedEnd-SpritesDataPrepared
-	call    mem_Copy
-; Update sprites in DMA
-	call	DMACODELOC
-
 ; Draw strings on the window
         ld      hl,StrWindowRows1
 	ld	de, $9C00		; line 0, column 0
@@ -159,6 +170,35 @@ Begin:
 	ld	de, $9C00+SCRN_VX_B*2	; line 2, column 0
         ld      bc,20
 	call	mem_Copy
+	jp	StartMenuMode
+
+;------------------------------------------------------------------------------
+; Prepare menu mode
+StartMenuMode:
+; Clear variables RAM at C000-CFFF
+	xor	a
+	ld	hl,$C000
+	ld	bc,$1000
+	call    mem_Set
+; Set scroll registers to upper left corner
+        xor     a
+        ld      [rSCX],a
+        ld      [rSCY],a
+        ld      [rWY],a
+	ld	a,7
+        ld      [rWX],a
+; Clear SpriteTable
+	xor	a
+	ld	hl,SpriteTable
+	ld	bc,160
+	call	mem_Set
+; Update sprites in DMA
+	call	DMACODELOC
+; Prepare sprites
+	ld	hl,SpritesDataPrepared
+	ld	de,SpriteTable
+	ld	bc,SpritesDataPreparedEnd-SpritesDataPrepared
+	call    mem_Copy
 ; Draw high score
 	ld	a,[HighScore]
 	ld	l,a
@@ -323,11 +363,10 @@ StartGameMode:
 	jr	c,.gamemainBottom	; No
 	ld	a,BoatLowerLevel	; Fix to lower level
 .gamemainBottom:
-	ld	[hl],a			; Save updated Y position
-	inc	hl
-	inc	hl
-	inc	hl
-	inc	hl
+	ldi	[hl],a			; Save updated Y position
+	inc	l
+	inc	l
+	inc	l
 	ld	[hl],a			; Save updated Y position for the 2nd sprite
 .gamemainMove1:
 ; Analyse X movement delta value
@@ -345,17 +384,22 @@ StartGameMode:
 	jr	c,.gamemainRight	; No
 	ld	a,BoatRightEdge		; Fix to right position
 .gamemainRight:
-	ld	[hl],a			; Save updated X position
-	inc	hl
-	inc	hl
-	inc	hl
-	inc	hl
+	ldi	[hl],a			; Save updated X position
+	inc	l
+	inc	l
+	inc	l
 	add	a,8
 	ld	[hl],a			; Save updated X position for the 2nd sprite
 .gamemainMove2:
+; DEBUG: Check for SELECT button
+	ld	a,[JoypadData]
+	bit	PADB_SELECT,a
+	jr	z,.gamemainNoStart
+	jp	StartMenuMode
+.gamemainNoStart:
 ; Check for fire button
 	ld	a,[JoypadData]
-	and	$01			; "A" button pressed?
+	bit	PADB_A,a		; "A" button pressed?
 	jr	z,.gamemainNoFire	; No
 	;TODO: Create a new torpedo object
 .gamemainNoFire:
