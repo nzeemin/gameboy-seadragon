@@ -107,12 +107,6 @@ Begin:
         ld      hl,$9C00
         ld      bc,SCRN_VX_B * SCRN_VY_B
         call    mem_Set
-; Clear SpriteTable
-	xor	a
-	ld	hl,SpriteTable
-	ld	bc,160
-	call	mem_Set
-	call	DMACODELOC		; Update sprites in DMA
 ; Set scroll registers to upper left corner
         xor     a
         ld      [rSCX],a
@@ -121,25 +115,18 @@ Begin:
 	ld	a,7
         ld      [rWX],a
 
-; Prepare sprite for the boat
+; Clear SpriteTable
+	xor	a
 	ld	hl,SpriteTable
-	ld	[hl],4+39		; Y pos
-	inc	hl
-	ld	[hl],20			; X pos
-	inc	hl
-	ld	[hl],6			; Sprite tile
-	inc	hl
-	ld	[hl],0			; Sprite attrs
-	inc	hl
-;
-	ld	[hl],4+39		; Y pos
-	inc	hl
-	ld	[hl],20+8		; X pos
-	inc	hl
-	ld	[hl],7			; Sprite tile
-	inc	hl
-	ld	[hl],0			; Sprite attrs
-	inc	hl
+	ld	bc,160
+	call	mem_Set
+; Prepare sprites
+	ld	hl,SpritesDataPrepared
+	ld	de,SpriteTable
+	ld	bc,SpritesDataPreparedEnd-SpritesDataPrepared
+	call    mem_Copy
+; Update sprites in DMA
+	call	DMACODELOC
 
 ; Draw strings on the window
         ld      hl,StrWindowRows1
@@ -224,6 +211,8 @@ StartGameMode:
 	call	DMACODELOC
 ; Scroll
 	ld	a,[ScrollCurrent]
+	or	a			; Scrolling stopped?
+	jr	z,.skipscroll		; Yes
 	dec	a
 	ld	[ScrollCurrent],a
 	jr	nz,.skipscroll
@@ -236,13 +225,30 @@ StartGameMode:
 	ld	c,a
 	and	7
 	jr	nz,.skipscroll
+; Check if the landscape ended
+	ld	hl,$9800 + SCRN_VX_B * 2
+	ld	a,c
+	srl	a
+	srl	a
+	srl	a			; Divide by 8
+	add	20
+	and	$1f
+	ld	c,a
+	ld	b,0
+	add	hl,bc
+	ld	a,[hl]
+	inc	a
+	jr	nz,.prepnextcol
+	ld	[ScrollCurrent],a	; Stop scrolling
+	jr	.skipscroll
+.prepnextcol:
 ; Prepare next landscape column
 	ld	hl,NextColumnAddr
 	ld	e,[hl]
 	inc	hl
 	ld	d,[hl]			; Get NextColumnAddr
 	ld	hl,$9800 + SCRN_VX_B * 2
-	ld	a,c
+	ld	a,[rSCX]
 	srl	a
 	srl	a
 	srl	a			; Divide by 8
@@ -251,6 +257,13 @@ StartGameMode:
 	ld	c,a
 	ld	b,0
 	add	hl,bc			; HL now contains proper address on the background map
+; Check if the landscape ended
+	ld	a,[de]			; Get first tile of the landscape column
+	inc	a			; Landscape end mark?
+	jr	nz,.doprepnextcol	; No
+	ld	[hl],$ff		; Put landscape end mark on the background map
+	jr	.skipscroll
+.doprepnextcol:
 	call	PrepareLandscapeNext	; Draw the column
 	ld	hl,NextColumnAddr
 	ld	[hl],e
@@ -410,6 +423,14 @@ IntLCDStat:
 .intlcdstatExit:
 	pop	af
 	reti
+
+;------------------------------------------------------------------------------
+; Sprites data prepared
+SpritesDataPrepared:
+;		Y pos	X pos	Tile	Attrs
+	DB	4+39,	20,	6,	0	; Boat 1st tile
+	DB	4+39,	20+8,	7,	0	; Boat 2nd tile
+SpritesDataPreparedEnd:
 
 ;------------------------------------------------------------------------------
 ; String constants
