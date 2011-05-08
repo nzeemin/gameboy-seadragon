@@ -29,10 +29,12 @@ SpriteTable     DS      160	; Sprite data prepared
 ScrollDelay	DB		; Scrolling delay
 ScrollCurrent	DB		; Scrolling count
 NextColumnAddr	DW		; Address of landscape data for the next column
-JoypadData	DB		; Last value read from joypad port
+JoypadDataPrev	DB		; Previous value read from joypad port
+JoypadData	DB		; Current value read from joypad port
 HighScore	DW		; Current score value
 Score		DW		; Current score value
 AirLevel	DB		; Current air level: 0..128
+Lives		DB		; Lives
 
 ;------------------------------------------------------------------------------
 ; Data section
@@ -247,13 +249,18 @@ StartGameMode:
 	ld	a,2
 	ld	[ScrollDelay],a
 	ld	[ScrollCurrent],a
-; Clear game variables
+; Prepare game variables
 	xor	a
 	ld	[Score],a
 	ld	[Score+1],a
 	ld	a,128
 	ld	[AirLevel],a
-	;TODO
+	ld	a,4
+	ld	[Lives],a
+; Show number of lives
+	ld	a,[Lives]
+	add	a,$30
+	ld	[$9C00 + 4],a
 ; Game mode main loop
 	ei				; Enable interrupts
 .gamemainloop:
@@ -329,6 +336,8 @@ StartGameMode:
 	ld	[hl],d			; Store updated NextColumnAddr 
 .skipscroll:
 ; Process joypad
+	ld	a,[JoypadData]
+	ld	[JoypadDataPrev],a	; Store previous joypad data
 	call	ReadJoypad
 	ld	[JoypadData],a		; Store last joypad data read from port
 	ld	de,0
@@ -397,13 +406,18 @@ StartGameMode:
 	jr	z,.gamemainNoStart
 	jp	StartMenuMode
 .gamemainNoStart:
-; Check for fire button
+; Check if fire button just pressed
 	ld	a,[JoypadData]
 	bit	PADB_A,a		; "A" button pressed?
 	jr	z,.gamemainNoFire	; No
-	;TODO: Create a new torpedo object
+	ld	a,[JoypadDataPrev]
+	bit	PADB_A,a		; "A" button was pressed previously?
+	jr	nz,.gamemainNoFire	; Yes
+; Create a new torpedo object
+	call	CreateNewTorpedo
 .gamemainNoFire:
-; TODO: Move objects: ship, mines, torpedos, bullets, bombs
+; Move objects: ship, mines, torpedos, bullets, bombs
+	call	MoveObjects
 ; TODO: Check for collisions
 ; Draw current score value
 	ld	a,[Score]
@@ -661,6 +675,64 @@ ShowAirLevel:
 	;TODO: Prepare the tile
 	;ld	[hl],$15
 .airend:
+	ret
+
+;------------------------------------------------------------------------------
+CreateNewTorpedo:
+; Find an empty slot first
+	ld	hl,SpriteTable+4*4	; Address of the first torpedo sprite
+	ld	b,6			; Max number of torpedos
+.findtorpedoslot:
+	ld	a,[hl]
+	or	a
+	jr	z,.preptorpedo
+	inc	hl
+	inc	hl
+	inc	hl
+	inc	hl
+	dec	b
+	jr	nz,.findtorpedoslot
+	ret				; No empty slots
+; Prepare the torpedo sprite; HL is the sprite address
+.preptorpedo:
+	ld	a,[SpriteTable]		; Get boat Y position
+	ldi	[hl],a			; Torpedo Y position
+	ld	a,[SpriteTable+1]	; Get boat X position
+	add	13			; Calculate torpedo initial X position
+	ld	[hl],a			; Torpedo X position
+	ret
+
+;------------------------------------------------------------------------------
+; Move objects: ship, mines, torpedos, bullets, bombs
+MoveObjects:
+; Move torpedos
+	ld	hl,SpriteTable+4*4
+	ld	b,6		; Torpedos count
+.movetorpedos:
+	ld	a,[hl]		; Current Y position
+	or	a		; Empty slot?
+	jr	nz,.movetorpedo	; No
+	inc	hl		; Skip the sprite
+	inc	hl
+	jr	.nexttorpedo
+.movetorpedo:
+	inc	hl		; No need to change Y position
+	ld	a,[hl]		; Current X position
+	add	a,2		; X increment
+	ldi	[hl],a
+	cp	160+8		; Out of the screen?
+	jr	c,.nexttorpedo	; No
+	xor	a
+	dec	hl
+	dec	hl
+	ldi	[hl],a		; Clear X and Y position
+	ldi	[hl],a
+.nexttorpedo:
+	inc	hl
+	inc	hl
+	dec	b
+	jr	nz,.movetorpedos
+;TODO: Move mines
 	ret
 
 ;------------------------------------------------------------------------------
