@@ -29,6 +29,7 @@ SpriteTable     DS      160	; Sprite data prepared
 ScrollDelay	DB		; Scrolling delay
 ScrollCurrent	DB		; Scrolling count
 NextColumnAddr	DW		; Address of landscape data for the next column
+NextVisColAddr	DW		; Address of the next visible column on the background tile map 
 JoypadDataPrev	DB		; Previous value read from joypad port
 JoypadData	DB		; Current value read from joypad port
 HighScore	DW		; Current score value
@@ -47,6 +48,8 @@ SECTION "Org Bank1",CODE,BANK[1]
 	INCLUDE "landscape.inc"
 	DB	$ff		; Marker "end of the landscape
 
+	INCLUDE "credits.inc"
+
 ; Sprites data prepared for game mode
 SpritesDataPrepared:
 ;		Y pos	X pos	Tile	Attrs
@@ -57,9 +60,9 @@ SpritesDataPrepared:
 	DB	0,	0,	2,	0	; Torpedo 1
 	DB	0,	0,	2,	0	; Torpedo 2
 	DB	0,	0,	2,	0	; Torpedo 3
-	DB	0,	0,	2,	0	; Torpedo 4
-	DB	0,	0,	2,	0	; Torpedo 5
-	DB	0,	0,	2,	0	; Torpedo 6
+	DB	0,	0,	2,	0	; Missile 1
+	DB	0,	0,	2,	0	; Missile 2
+	DB	0,	0,	2,	0	; Missile 3
 	DB	0,	0,	3,	0	; Mine 1
 	DB	0,	0,	3,	0	; Mine 2
 	DB	0,	0,	3,	0	; Mine 3
@@ -95,6 +98,8 @@ StrWindowRows2:
 	DB      "  000000    000000  "
 StrWindowRows3:
 	DB      "AIR:                "
+StrWindowStart:
+	DB      "PRESS START TO BEGIN"
 
 ;------------------------------------------------------------------------------
 ; Additional includes
@@ -122,6 +127,7 @@ BoatRightEdge	EQU	140
 AirLevelTop	EQU	128
 AirDeltaDefault	EQU	28
 AirDeltaTop	EQU	28+12
+ObjTorpedoCount	EQU	3
 
 ;------------------------------------------------------------------------------
 ; Starting point
@@ -172,15 +178,20 @@ Begin:
 	ld	de, $9C00+SCRN_VX_B	; line 1, column 0
         ld      bc,20
 	call	mem_Copy
-        ld      hl,StrWindowRows3
-	ld	de, $9C00+SCRN_VX_B*2	; line 2, column 0
-        ld      bc,20
-	call	mem_Copy
 	jp	StartMenuMode
+
+;------------------------------------------------------------------------------
+; Service routines
+        INCLUDE "service.inc"
 
 ;------------------------------------------------------------------------------
 ; Prepare menu mode
 StartMenuMode:
+; Draw "Press Start to begin" line
+        ld      hl,StrWindowStart
+	ld	de, $9C00+SCRN_VX_B*2	; line 2, column 0
+        ld      bc,20
+	call	mem_Copy
 ; Clear variables RAM at C000-CFFF
 	xor	a
 	ld	hl,$C000
@@ -231,6 +242,7 @@ StartMenuMode:
 	ld	[rSTAT],a
         ei
 ; Menu mode main loop
+	ld	bc,60*25		; Counter for 25 seconds
 .menumainloop:
 ;	halt
 	nop				; Sometimes an instruction after halt is skipped
@@ -239,16 +251,131 @@ StartMenuMode:
 	cp	1			; VBlank?
 	jr	nz,.menumainloop
 ; Check joypad state
+	ld	a,[JoypadData]
+	ld	[JoypadDataPrev],a	; Store previous joypad data
+	push	bc
 	call	ReadJoypad
-	bit	PADB_START,a			; Start button pressed?
+	pop	bc
+	ld	[JoypadData],a
+; Check if START button just released
+	bit	PADB_START,a		; Start button pressed?
+	jr	nz,.menumainNoStart	; Yes
+	ld	a,[JoypadDataPrev]
+	bit	PADB_START,a		; Start button was pressed?
 	jp	nz,StartGameMode	; Yes, start the game
-; Continue menu main loop	
-        jr      .menumainloop
+.menumainNoStart:
+; Wait for end of VBlank
+.menumainWaitVEnd:
+	ld	a,[rSTAT]		; Check Mode flags
+	and	3
+	cp	1			; VBlank?
+	jr	z,.menumainWaitVEnd	; Yes, keep waiting
+; Continue menu main loop
+	dec	c
+	jr	nz,.menumainloop
+	dec	b
+        jr      nz,.menumainloop
+        jp	StartCreditsMode
 
+;------------------------------------------------------------------------------
+; Credits vertical scrolling mode        
+StartCreditsMode:
+; Clear "AIR" line
+	xor	a
+	ld	hl, $9C00+SCRN_VX_B*2	; line 2, column 0
+        ld      bc,20
+	call	mem_Set
+; Prepare scroll
+	ld	a,5
+	ld	[ScrollDelay],a
+	ld	[ScrollCurrent],a
+; Prepare data
+	ld	de,CreditsData
+	ld	hl,$9800+SCRN_VX_B*17
+	call	PrepareCreditsNext
+	ld	hl,NextColumnAddr
+	ld	[hl],e
+	inc	hl
+	ld	[hl],d
+; Credits mode main loop
+	ei				; Enable interrupts
+.credMainLoop:
+	ld	a,[rSTAT]		; Check Mode flags
+	and	3
+	cp	1			; VBlank?
+	jr	nz,.credMainLoop	; No, keep waiting
+; VBlank mode processing
+; Scroll
+	ld	a,[ScrollCurrent]
+	dec	a
+	ld	[ScrollCurrent],a
+	jr	nz,.credSkipScroll
+	ld	a,[ScrollDelay]
+	ld	[ScrollCurrent],a
+	ld	a,[rSCY]
+	inc	a
+	ld	[rSCY],a
+; Check if scrolled to the next row
+	ld	c,a
+	and	7
+	jr	nz,.credSkipScroll
+; Prepare next credits row
+	ld	hl,NextColumnAddr
+	ld	e,[hl]
+	inc	hl
+	ld	d,[hl]			; Get next row address
+	ld	hl,$9800
+	ld	a,c
+	srl	a
+	srl	a
+	srl	a			; 
+	add	17
+	and	$1f
+	jr	z,.credScroll2
+.credScroll1:
+	ld	bc,SCRN_VX_B
+	add	hl,bc
+	dec	a
+	jr	nz,.credScroll1
+.credScroll2:
+; Check for scroll end mark
+	ld	a,[de]
+	inc	a			; $ff ?
+	jp	z,StartMenuMode		; EXIT to menu
+; Prepare next row
+	call	PrepareCreditsNext
+	ld	hl,NextColumnAddr
+	ld	[hl],e
+	inc	hl
+	ld	[hl],d
+.credSkipScroll:
+; Check joypad state
+	ld	a,[JoypadData]
+	ld	[JoypadDataPrev],a	; Store previous joypad data
+	call	ReadJoypad
+	ld	[JoypadData],a
+	or	a			; Some button pressed?
+	jr	nz,.credSkipJoypad	; Yes, wait for release
+	ld	a,[JoypadDataPrev]
+	or	a			; Some button was pressed?
+	jp	nz,StartMenuMode	; Yes, EXIT to menu
+.credSkipJoypad:	
+.credWaitVEnd:
+	ld	a,[rSTAT]		; Check Mode flags
+	and	3
+	cp	1			; VBlank?
+	jr	z,.credWaitVEnd		; Yes, keep waiting
+	jr	.credMainLoop
+	
 ;------------------------------------------------------------------------------
 ; Prepare game mode
 StartGameMode:
 	di
+; Draw "AIR" line
+        ld      hl,StrWindowRows3
+	ld	de, $9C00+SCRN_VX_B*2	; line 2, column 0
+        ld      bc,20
+	call	mem_Copy
 ; Prepare scroll
 	ld	a,2
 	ld	[ScrollDelay],a
@@ -296,7 +423,7 @@ StartGameMode:
 	ld	c,a
 	and	7
 	jr	nz,.skipscroll
-; Check if the landscape ended
+; Calculate next visible column
 	ld	hl,$9800 + SCRN_VX_B * 2
 	ld	a,c
 	srl	a
@@ -307,9 +434,14 @@ StartGameMode:
 	ld	c,a
 	ld	b,0
 	add	hl,bc
+	ld	a,l
+	ld	[NextVisColAddr],a	; Store the calculated address of the next visible column
+	ld	a,h
+	ld	[NextVisColAddr+1],a
+; Check if the landscape ended
 	ld	a,[hl]
-	inc	a
-	jr	nz,.prepnextcol
+	inc	a			; A == $ff ?
+	jr	nz,.prepnextcol		; No
 	ld	[ScrollCurrent],a	; Stop scrolling
 	jr	.skipscroll
 .prepnextcol:
@@ -339,13 +471,16 @@ StartGameMode:
 	ld	hl,NextColumnAddr
 	ld	[hl],e
 	inc	hl
-	ld	[hl],d			; Store updated NextColumnAddr 
+	ld	[hl],d			; Store updated NextColumnAddr
+; Analyse next visible column
+	call	AnalyzeNextVisCol
 .skipscroll:
 ; Process joypad
 	ld	a,[JoypadData]
 	ld	[JoypadDataPrev],a	; Store previous joypad data
 	call	ReadJoypad
 	ld	[JoypadData],a		; Store last joypad data read from port
+; Check D-pad buttons
 	ld	de,0
 	bit	PADB_DOWN,a		; Down pressed?
 	jr	z,.gamemainJoy1
@@ -406,40 +541,18 @@ StartGameMode:
 	add	a,8
 	ld	[hl],a			; Save updated X position for the 2nd sprite
 .gamemainMove2:
-; DEBUG: Check for SELECT button
+; Check if the START button just released
 	ld	a,[JoypadData]
-	bit	PADB_SELECT,a
-	jr	z,.gamemainNoStart
-	jp	StartMenuMode
+	bit	PADB_START,a		; Start button pressed?
+	jr	nz,.gamemainNoStart	; Yes
+	ld	a,[JoypadDataPrev]
+	bit	PADB_START,a		; Start button was pressed?
+	jp	nz,StartMenuMode	; EXIT to menu
 .gamemainNoStart:
-; AirDelta/AirLevel change
-	ld	a,[AirLevel]
-	ld	c,a
-	ld	a,[AirDelta]
-	ld	b,a
-	ld	a,[SpriteTable]		; Get boat Y position
-	cp	7+39			; Can the boat get fresh air?
-	jr	nc,.gamemainNoAir	; No
-	inc	b
-	ld	a,b
-	cp	AirDeltaTop
-	jr	c,.gamemainFinAir
-	ld	b,AirDeltaDefault
-	inc	c
-	jr	.gamemainFinAir
-.gamemainNoAir:	
-	dec	b
-	jr	nz,.gamemainFinAir
-	ld	b,AirDeltaDefault
-	dec	c
-.gamemainFinAir:
-	ld	a,b
-	ld	[AirDelta],a		; Save new AirDelta
-	ld	a,c
-	cp	AirLevelTop+1		; AirLevel is over the top level?
-	jr	nc,.gamemainSkipAir	; Yes
-	ld	[AirLevel],a		; Save new AirLevel
-.gamemainSkipAir:
+;TODO: Checkif the SELECT button just released, implement Pause Mode 
+; Update AirDelta/AirLevel values
+	call	ChangeAirDelta
+;TODO: if AirLevel is 0 then end the round
 ; Check if fire button just pressed
 	ld	a,[JoypadData]
 	bit	PADB_A,a		; "A" button pressed?
@@ -547,30 +660,6 @@ StopLCD:
         res     7,a             	; Reset bit 7 of LCDC
         ld      [rLCDC],a
         ret
-        
-;------------------------------------------------------------------------------
-; Read Joypad data
-; Output: a - high bits:Dn,Up,Lt,Rt, low bits:Start,Select,B,A
-; Uses:   b
-ReadJoypad:
-	ld	a,$20
-	ld	[$FF00],a		; Turn on P15
-	ld	a,[$FF00]
-	ld	a,[$FF00]		; Wait a few cycles
-	cpl
-	and	$0f
-	swap	a
-	ld	b,a
-	ld	a,$10
-	ld	[$FF00],a		; Turn on P14
-	ld	a,[$FF00]
-	ld	a,[$FF00]
-	ld	a,[$FF00]
-	ld	a,[$FF00]		; Wait a few MORE cycles
-	cpl
-	and	$0f
-	or	b
-	ret
 
 ;------------------------------------------------------------------------------
 ; Prepare first 32 columns of landscape
@@ -623,56 +712,93 @@ PrepareLandscapeNext:
 	ret
 
 ;------------------------------------------------------------------------------
-; Print word value as decimal number, five digits (00000-65535)
-; Input:  hl - number to print, bc - address on the screen
-; Uses:   af,de
-PrintWord:
-	ld	a,4		; Number of digits to print minus 1
-.pdw1:
-	push	bc
-	push	hl
-	ld	hl,PrintWordTable
-	ld	b,0
-	ld	c,a
-	add	hl,bc
-	add	hl,bc
-	ld      e,[hl]		; Get next table value
+; Input:  de - credits data starting address, hl - address on the screen
+; Output: de - next credits column address
+PrepareCreditsNext:
+	ld	b,20
+.prepcrednext1:
+	ld	a,[de]
+	inc	de
+	cp	13
+	jr	z,.prepcred13
+	cp	10
+	ret	z
+	cp	$ff
+	jr	z,.prepcredff
+	ld	[hl],a
 	inc	hl
-        ld      d,[hl]
-        pop	hl
-        pop	bc
-; Loop for one digit
-        push	af
-        xor     a		; Clear counter and flag C
-.pdw2:
-	inc     a		; Increase counter
-        add     hl,de		; Add table value
-        jr      c,.pdw2    	; Repeat while hl>=0
-        add     a,$30 - 1	; Translate to digit character
-	ld	[bc],a		; Print the character
-	inc	bc
-; Substract DE from HL
-	ld	a,l
-	sub	e
-	ld	l,a
-	ld	a,h
-	sbc	d
-	ld	h,a
-;
-	pop	af
-        dec	a
-        jr	nz,.pdw1	; Digits loop
-; Print the reminder
-	ld	a,l
-        add     a,$30		; Translate to digit character
-	ld	[bc],a		; Print the character
+	dec	b
+	jr	nz,.prepcrednext1
 	ret
-PrintWordTable:
-	DW	65536-1
-	DW	65536-10
-	DW	65536-100
-	DW	65536-1000
-	DW	65536-10000
+.prepcred13:
+	ld	a,b
+	or	a
+	ret	z
+.prepcred13loop:
+	ld	[hl],0
+	inc	hl
+	dec	b
+	jr	nz,.prepcred13loop
+	ret
+.prepcredff:
+	ld	de,CreditsData
+	ret
+	
+;------------------------------------------------------------------------------
+; Analyze next visible column
+AnalyzeNextVisCol:
+	ld	a,[NextVisColAddr]
+	ld	l,a
+	ld	a,[NextVisColAddr+1]
+	ld	h,a
+	ld	b,LandscapeRows
+.analyzeloop:
+	ld	a,[hl]
+	cp	$0c			; Ship?
+	jr	nz,.analyzeNotShip
+	ld	[hl],$01		; Replace to water tile
+	;TODO: Create a ship sprite
+.analyzeNotShip:
+; Next row
+	push	bc
+	ld	bc,SCRN_VX_B
+	add	hl,bc
+	pop	bc
+	dec	b
+	jr	nz,.analyzeloop
+	ret
+
+;------------------------------------------------------------------------------
+; Update AirDelta/AirLevel values
+ChangeAirDelta:
+	ld	a,[AirLevel]
+	ld	c,a
+	ld	a,[AirDelta]
+	ld	b,a
+	ld	a,[SpriteTable]		; Get boat Y position
+	cp	7+39			; Can the boat get fresh air?
+	jr	nc,.updateairNoAir	; No
+	inc	b
+	ld	a,b
+	cp	AirDeltaTop
+	jr	c,.updateairFin
+	ld	b,AirDeltaDefault
+	inc	c
+	jr	.updateairFin
+.updateairNoAir:	
+	dec	b
+	jr	nz,.updateairFin
+	ld	b,AirDeltaDefault
+	dec	c
+.updateairFin:
+	ld	a,b
+	ld	[AirDelta],a		; Save new AirDelta
+	ld	a,c
+	cp	AirLevelTop+1		; AirLevel is over the top level?
+	jr	nc,.updateairSkipAir	; Yes
+	ld	[AirLevel],a		; Save new AirLevel
+.updateairSkipAir:
+	ret
 
 ;------------------------------------------------------------------------------
 ; Update air level indicator
@@ -744,7 +870,7 @@ ShowAirLevel:
 CreateNewTorpedo:
 ; Find an empty slot first
 	ld	hl,SpriteTable+4*4	; Address of the first torpedo sprite
-	ld	b,6			; Max number of torpedos
+	ld	b,ObjTorpedoCount
 .findtorpedoslot:
 	ld	a,[hl]
 	or	a
@@ -770,7 +896,7 @@ CreateNewTorpedo:
 MoveObjects:
 ; Move torpedos
 	ld	hl,SpriteTable+4*4
-	ld	b,6		; Torpedos count
+	ld	b,ObjTorpedoCount
 .movetorpedos:
 	ld	a,[hl]		; Current Y position
 	or	a		; Empty slot?
