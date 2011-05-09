@@ -34,6 +34,7 @@ JoypadData	DB		; Current value read from joypad port
 HighScore	DW		; Current score value
 Score		DW		; Current score value
 AirLevel	DB		; Current air level: 0..128
+AirDelta	DB		; Accumulator for AirLevel change
 Lives		DB		; Lives
 
 ;------------------------------------------------------------------------------
@@ -118,6 +119,9 @@ BoatWaterLevel	EQU	43
 BoatLowerLevel	EQU	139
 BoatLeftEdge	EQU	8
 BoatRightEdge	EQU	140
+AirLevelTop	EQU	128
+AirDeltaDefault	EQU	28
+AirDeltaTop	EQU	28+12
 
 ;------------------------------------------------------------------------------
 ; Starting point
@@ -253,8 +257,10 @@ StartGameMode:
 	xor	a
 	ld	[Score],a
 	ld	[Score+1],a
-	ld	a,128
+	ld	a,AirLevelTop
 	ld	[AirLevel],a
+	ld	a,AirDeltaDefault
+	ld	[AirDelta],a
 	ld	a,4
 	ld	[Lives],a
 ; Show number of lives
@@ -406,6 +412,34 @@ StartGameMode:
 	jr	z,.gamemainNoStart
 	jp	StartMenuMode
 .gamemainNoStart:
+; AirDelta/AirLevel change
+	ld	a,[AirLevel]
+	ld	c,a
+	ld	a,[AirDelta]
+	ld	b,a
+	ld	a,[SpriteTable]		; Get boat Y position
+	cp	7+39			; Can the boat get fresh air?
+	jr	nc,.gamemainNoAir	; No
+	inc	b
+	ld	a,b
+	cp	AirDeltaTop
+	jr	c,.gamemainFinAir
+	ld	b,AirDeltaDefault
+	inc	c
+	jr	.gamemainFinAir
+.gamemainNoAir:	
+	dec	b
+	jr	nz,.gamemainFinAir
+	ld	b,AirDeltaDefault
+	dec	c
+.gamemainFinAir:
+	ld	a,b
+	ld	[AirDelta],a		; Save new AirDelta
+	ld	a,c
+	cp	AirLevelTop+1		; AirLevel is over the top level?
+	jr	nc,.gamemainSkipAir	; Yes
+	ld	[AirLevel],a		; Save new AirLevel
+.gamemainSkipAir:
 ; Check if fire button just pressed
 	ld	a,[JoypadData]
 	bit	PADB_A,a		; "A" button pressed?
@@ -647,34 +681,63 @@ ShowAirLevel:
 	ld	a,[AirLevel]
 	srl	a
 	srl	a
-	srl	a		; Divide by 8
+	srl	a			; Divide by 8
+	ld	hl,$9c00+SCRN_VX_B*2+4
+	jr	z,.airnosolid
+	push	af
 	ld	c,a
 	ld	b,0
-	ld	a,5		; Tile for air
-	ld	hl,$9c00+SCRN_VX_B*2+4
+	ld	a,5			; Tile for air level
 	call	mem_Set
+	pop	af
+.airnosolid:
+; Draw empty space for (A-16) tiles
+	push	hl			; Remember address for the reminder tile
 	ld	c,a
 	ld	a,16
 	sub	c
 	jr	z,.airnofiller
 	ld	c,a
 	ld	b,0
-	xor	a		; Tile for empty space
+	xor	a			; Tile for empty space
 	call	mem_Set
 .airnofiller:
+	pop	de
 ; Draw reminder
 	ld	a,[AirLevel]
 	and	$07
-	jr	z,.airend
+	ret	z			; have no reminder, finished
 	ld	c,a
-	scf
 .airremloop:
+	scf
 	rra
 	dec	c
 	jr	nz,.airremloop
-	;TODO: Prepare the tile
-	;ld	[hl],$15
-.airend:
+; Prepare tile for the reminder
+	ld	hl,$8000+$15*16		; Tile number $15 address
+	ld	c,a
+	xor	a
+	ldi	[hl],a
+	ldi	[hl],a
+	ldi	[hl],a
+	ldi	[hl],a
+	ld	a,c
+	ldi	[hl],a
+	ldi	[hl],a
+	ldi	[hl],a
+	ldi	[hl],a
+	ldi	[hl],a
+	ldi	[hl],a
+	ldi	[hl],a
+	ldi	[hl],a
+	ldi	[hl],a
+	ldi	[hl],a
+	xor	a
+	ldi	[hl],a
+	ldi	[hl],a
+; Draw the reminder tile
+	ld	a,$15
+	ld	[de],a
 	ret
 
 ;------------------------------------------------------------------------------
