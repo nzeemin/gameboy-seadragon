@@ -186,6 +186,9 @@ Begin:
 
 ;------------------------------------------------------------------------------
 ; Prepare menu mode
+RestartMenuMode:
+        call    StopLCD
+	di
 StartMenuMode:
 ; Draw "Press Start to begin" line
         ld      hl,StrWindowStart
@@ -280,6 +283,7 @@ StartMenuMode:
 ;------------------------------------------------------------------------------
 ; Credits vertical scrolling mode        
 StartCreditsMode:
+	call	WaitVBlank
 ; Clear "AIR" line
 	xor	a
 	ld	hl, $9C00+SCRN_VX_B*2	; line 2, column 0
@@ -341,7 +345,7 @@ StartCreditsMode:
 ; Check for scroll end mark
 	ld	a,[de]
 	inc	a			; $ff ?
-	jp	z,StartMenuMode		; EXIT to menu
+	jp	z,RestartMenuMode	; EXIT to menu
 ; Prepare next row
 	call	PrepareCreditsNext
 	ld	hl,NextColumnAddr
@@ -358,7 +362,7 @@ StartCreditsMode:
 	jr	nz,.credSkipJoypad	; Yes, wait for release
 	ld	a,[JoypadDataPrev]
 	or	a			; Some button was pressed?
-	jp	nz,StartMenuMode	; Yes, EXIT to menu
+	jp	nz,RestartMenuMode	; Yes, EXIT to menu
 .credSkipJoypad:	
 .credWaitVEnd:
 	ld	a,[rSTAT]		; Check Mode flags
@@ -547,7 +551,7 @@ StartGameMode:
 	jr	nz,.gamemainNoStart	; Yes
 	ld	a,[JoypadDataPrev]
 	bit	PADB_START,a		; Start button was pressed?
-	jp	nz,StartMenuMode	; EXIT to menu
+	jp	nz,RestartMenuMode	; EXIT to menu
 .gamemainNoStart:
 ;TODO: Checkif the SELECT button just released, implement Pause Mode 
 ; Update AirDelta/AirLevel values
@@ -922,6 +926,14 @@ MoveObjects:
 	dec	b
 	jr	nz,.movetorpedos
 ;TODO: Move mines
+	ret
+
+;------------------------------------------------------------------------------
+WaitVBlank:
+	ld	a,[rSTAT]		; Check Mode flags
+	and	3
+	cp	1			; VBlank?
+	jr	nz,WaitVBlank
 	ret
 
 ;------------------------------------------------------------------------------
