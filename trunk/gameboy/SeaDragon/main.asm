@@ -25,7 +25,7 @@
 ;------------------------------------------------------------------------------
 ; Variables
 	SECTION "Vars",BSS
-SpriteTable     DS      160	; Sprite data prepared
+SpriteTable     DS      160	; Sprite data prepared; DO NOT MOVE, keep at start of the segment
 ScrollDelay	DB		; Scrolling delay
 ScrollCurrent	DB		; Scrolling count
 NextColumnAddr	DW		; Address of landscape data for the next column
@@ -41,9 +41,12 @@ Lives		DB		; Lives
 ;------------------------------------------------------------------------------
 ; Data section
 SECTION "Org Bank1",CODE,BANK[1]
-	INCLUDE "sprites.inc"
-	INCLUDE "tileland.inc"
-	INCLUDE "font.inc"
+TilesBegin:
+	INCLUDE "sprites.inc"	; 16*2=32 tiles
+	INCLUDE "font.inc"	; 16*4=64 characters: symbols and capital letters
+		DS	32*8	; 16*2=32 tiles, not used
+	INCLUDE "tileland.inc"	; 16*3=48 landscape tiles
+TilesEnd:
 
 	INCLUDE "landscape.inc"
 	DB	$ff		; Marker "end of the landscape
@@ -220,10 +223,10 @@ StartMenuMode:
 	ld	bc,SpritesDataPreparedEnd-SpritesDataPrepared
 	call    mem_Copy
 ; Draw high score
-	ld	a,[HighScore]
+	ld	hl,HighScore
+	ld	a,[hl+]
+	ld	h,[hl]
 	ld	l,a
-	ld	a,[HighScore+1]
-	ld	h,a
 	ld	bc, $9C00+SCRN_VX_B+12	; line 1, column 12
 	call	PrintWord
         
@@ -571,10 +574,10 @@ StartGameMode:
 	call	MoveObjects
 ; TODO: Check for collisions
 ; Draw current score value
-	ld	a,[Score]
+	ld	hl,Score
+	ld	a,[hl+]
+	ld	h,[hl]
 	ld	l,a
-	ld	a,[Score+1]
-	ld	h,a
 	ld	bc, $9C00+SCRN_VX_B+2		; line 1, column 2
 	call	PrintWord
 ; Show air level
@@ -821,11 +824,10 @@ ShowAirLevel:
 	call	mem_Set
 	pop	af
 .airnosolid:
-; Draw empty space for (A-16) tiles
+; Draw empty space for (16-A) tiles
 	push	hl			; Remember address for the reminder tile
-	ld	c,a
-	ld	a,16
-	sub	c
+	cpl
+	add	16+1			; result is (16-A)
 	jr	z,.airnofiller
 	ld	c,a
 	ld	b,0
@@ -929,11 +931,22 @@ MoveObjects:
 	ret
 
 ;------------------------------------------------------------------------------
-WaitVBlank:
-	ld	a,[rSTAT]		; Check Mode flags
-	and	3
-	cp	1			; VBlank?
-	jr	nz,WaitVBlank
+; Check sprite to landscape collision
+; Input:  hl - sprite address
+;         c - current horizontal scroll value
+CheckSpriteToLand:
+; Calculate sprite (X,Y) plus scrolling
+	ld	a,[hl+]		; Get sprite Y
+	add	16
+	ld	b,a
+	ld	a,[hl+]		; Get sprite X
+	add	8
+	sub	c
+	ld	c,a
+;
+	ld	a,[hl]		; Get sprite tile number
+;TODO: Find address on the background tile map
+	
 	ret
 
 ;------------------------------------------------------------------------------

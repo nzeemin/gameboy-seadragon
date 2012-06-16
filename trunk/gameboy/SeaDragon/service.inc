@@ -1,5 +1,13 @@
 ; Sea Dragon for GameBoy 
 ; Service routines
+
+;------------------------------------------------------------------------------
+WaitVBlank:
+	ld	a,[rSTAT]		; Check Mode flags
+	and	3
+	cp	1			; VBlank?
+	jr	nz,WaitVBlank
+	ret
         
 ;------------------------------------------------------------------------------
 ; Read Joypad data

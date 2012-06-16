@@ -3,8 +3,7 @@
         
 ;------------------------------------------------------------------------------
 CreditsData:
-	DB	"GAMEBOY VERSION"
-	DB	13
+	DB	"GAMEBOY VERSION",13
 	DB	"  2011 NIKITA ZIMIN",13
 	DB	13
 	DB	"ORIGINAL TRS-80 GAME"
