@@ -86,3 +86,66 @@ PrintWordTable:
 	DW	65536-10000
 
 ;------------------------------------------------------------------------------
+; Rand16: Generate pseudo-random word
+; Output: hl = pseudo-random word
+; Before first call to Rand16, set random seed word called RandSeed with a reasonably random
+; number, or you will always generate the same pseudo-random numbers from this function.
+; Source: http://cratel.wichita.edu/cratel/ECE238Spr08/software
+
+RandSeed	DW	0
+
+Rand16	push	af
+	push	de
+	ld	a,[RandSeed]	; LSB first
+	ld	e,a
+	ld	a,[RandSeed+1]
+	ld	d,a
+
+	ld	h,e
+	ld	l,253
+	push	af		; save a
+; hl = hl - de:
+; do 2s complement of de and add:
+	dec	de
+	ld	a,d
+	cpl
+	ld	d,a
+	ld	a,e
+	cpl
+	ld	e,a
+	pop	af		; restore a
+	add	hl,de
+	sbc	a,0		; a = a - CY
+	jr	nc,.nosubtract
+	dec	hl		; carry flag was set
+.nosubtract:
+	add	hl,de
+
+	ld	d,0
+	sbc	a,d
+	ld	e,a		
+	jr	nc,.nosub2
+	dec	hl
+.nosub2
+; hl = hl - de:
+; do 2s complement of de and add:
+	dec	de
+	ld	a,d
+	cpl
+	ld	d,a
+	ld	a,e
+	cpl
+	ld	e,a
+	add	hl,de
+
+	jr	nc,.Rand
+	inc	hl
+.Rand	ld	a,l
+	ld	[RandSeed],a
+	ld	a,h
+	ld	[RandSeed+1],a
+	pop	de
+	pop	af
+	ret
+	
+;------------------------------------------------------------------------------

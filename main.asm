@@ -811,34 +811,27 @@ ChangeAirDelta:
 ; Update air level indicator
 ShowAirLevel:
 ; Draw solid part
-	ld	a,[AirLevel]
+	ld	a,[AirLevel]		; 0..128
 	srl	a
 	srl	a
-	srl	a			; Divide by 8
+	srl	a			; Divide by 8 -- 0..16
 	ld	hl,$9c00+SCRN_VX_B*2+4
 	jr	z,.airnosolid
 	push	af
 	ld	c,a
-	ld	b,0
-	ld	a,5			; Tile for air level
-	call	mem_Set
+	ld	a,5			; Tile #5 for air level
+.airsolidloop:
+	ldi	[hl],a
+	dec	c
+	jr	nz,.airsolidloop
 	pop	af
 .airnosolid:
-; Draw empty space for (16-A) tiles
-	push	hl			; Remember address for the reminder tile
-	cpl
-	add	16+1			; result is (16-A)
-	jr	z,.airnofiller
-	ld	c,a
-	ld	b,0
-	xor	a			; Tile for empty space
-	call	mem_Set
-.airnofiller:
-	pop	de
-; Draw reminder
+	ld	d,a			; store A
 	ld	a,[AirLevel]
 	and	$07
-	ret	z			; have no reminder, finished
+	jr	z,.airnorem
+	inc	d
+; Draw the reminder tile
 	ld	c,a
 .airremloop:
 	scf
@@ -846,6 +839,7 @@ ShowAirLevel:
 	dec	c
 	jr	nz,.airremloop
 ; Prepare tile for the reminder
+	push	hl
 	ld	hl,$8000+$15*16		; Tile number $15 address
 	ld	c,a
 	xor	a
@@ -867,9 +861,23 @@ ShowAirLevel:
 	xor	a
 	ldi	[hl],a
 	ldi	[hl],a
+	pop	hl
 ; Draw the reminder tile
 	ld	a,$15
-	ld	[de],a
+	ldi	[hl],a
+.airnorem:
+	ld	a,d			; restore A
+; Draw empty space for (16-A) tiles
+	cpl
+	add	16+1			; result is (16-A)
+	jr	z,.airnofiller
+	ld	c,a
+	xor	a			; Tile #0 for empty space
+.airemptyloop:
+	ldi	[hl],a
+	dec	c
+	jr	nz,.airemptyloop
+.airnofiller:
 	ret
 
 ;------------------------------------------------------------------------------
@@ -932,20 +940,23 @@ MoveObjects:
 
 ;------------------------------------------------------------------------------
 ; Check sprite to landscape collision
-; Input:  hl - sprite address
+; Input:  hl - sprite address in SpriteTable
 ;         c - current horizontal scroll value
 CheckSpriteToLand:
 ; Calculate sprite (X,Y) plus scrolling
 	ld	a,[hl+]		; Get sprite Y
 	add	16
-	ld	b,a
+	ld	c,a
 	ld	a,[hl+]		; Get sprite X
 	add	8
-	sub	c
-	ld	c,a
+	sub	b
+	ld	b,a		; Now BC is the sprite XY
 ;
 	ld	a,[hl]		; Get sprite tile number
+
 ;TODO: Find address on the background tile map
+        ld      a,[rSCX]
+        ld      a,[rSCY]
 	
 	ret
 
