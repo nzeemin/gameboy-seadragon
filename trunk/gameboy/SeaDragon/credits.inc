@@ -4,7 +4,7 @@
 ;------------------------------------------------------------------------------
 CreditsData:
 	DB	"GAMEBOY VERSION",13
-	DB	"  2011 NIKITA ZIMIN",13
+	DB	"  2012 NIKITA ZIMIN",13
 	DB	13
 	DB	"ORIGINAL TRS-80 GAME"
 	DB	"  1982 WAYNE",13
