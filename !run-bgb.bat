@@ -1,1 +1,1 @@
-@start C:\bin\Emulators\BGB\bgb.exe seadragon.gb
+@start C:\bin\BGB64\bgb64.exe seadragon.gb

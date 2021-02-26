@@ -92,9 +92,9 @@ PrintWordTable:
 ; number, or you will always generate the same pseudo-random numbers from this function.
 ; Source: http://cratel.wichita.edu/cratel/ECE238Spr08/software
 
-RandSeed	DW	0
+RandSeed:	DW	0
 
-Rand16	push	af
+Rand16:	push	af
 	push	de
 	ld	a,[RandSeed]	; LSB first
 	ld	e,a

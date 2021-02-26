@@ -7,40 +7,40 @@
 
 ;------------------------------------------------------------------------------
 ; Beginning
-        SECTION "Org $0",HOME
+        SECTION "Org $0",ROM0
         ret
-        SECTION "Org $40",HOME[$40]
+        SECTION "Org $40",ROM0[$40]
 	jp	IntVBlank
-        SECTION "Org $48",HOME[$48]
+        SECTION "Org $48",ROM0[$48]
         jp      IntLCDStat
-        SECTION "Org $50",HOME[$50]	; Timer overflow IRQ
+        SECTION "Org $50",ROM0[$50]	; Timer overflow IRQ
         reti
-        SECTION "Org $58",HOME[$58]	; Serial IRQ
+        SECTION "Org $58",ROM0[$58]	; Serial IRQ
         reti
-        SECTION "Org $60",HOME[$60]
+        SECTION "Org $60",ROM0[$60]
         reti
-        SECTION "Org $68",HOME[$68]
+        SECTION "Org $68",ROM0[$68]
         DS	$98		; Filler, to prevent use of the area
 
 ;------------------------------------------------------------------------------
 ; Variables
-	SECTION "Vars",BSS
-SpriteTable     DS      160	; Sprite data prepared; DO NOT MOVE, keep at start of the segment
-ScrollDelay	DB		; Scrolling delay
-ScrollCurrent	DB		; Scrolling count
-NextColumnAddr	DW		; Address of landscape data for the next column
-NextVisColAddr	DW		; Address of the next visible column on the background tile map 
-JoypadDataPrev	DB		; Previous value read from joypad port
-JoypadData	DB		; Current value read from joypad port
-HighScore	DW		; Current score value
-Score		DW		; Current score value
-AirLevel	DB		; Current air level: 0..128
-AirDelta	DB		; Accumulator for AirLevel change
-Lives		DB		; Lives
+	SECTION "Vars",WRAM0
+SpriteTable:    DS      160	; Sprite data prepared; DO NOT MOVE, keep at start of the segment
+ScrollDelay:	DB		; Scrolling delay
+ScrollCurrent:	DB		; Scrolling count
+NextColumnAddr:	DW		; Address of landscape data for the next column
+NextVisColAddr:	DW		; Address of the next visible column on the background tile map 
+JoypadDataPrev:	DB		; Previous value read from joypad port
+JoypadData:	DB		; Current value read from joypad port
+HighScore:	DW		; Current score value
+Score:		DW		; Current score value
+AirLevel:	DB		; Current air level: 0..128
+AirDelta:	DB		; Accumulator for AirLevel change
+Lives:		DB		; Lives
 
 ;------------------------------------------------------------------------------
 ; Data section
-SECTION "Org Bank1",CODE,BANK[1]
+SECTION "Org Bank1",ROM0
 TilesBegin:
 	INCLUDE "sprites.inc"	; 16*2=32 tiles
 	INCLUDE "font.inc"	; 16*4=64 characters: symbols and capital letters
@@ -110,7 +110,7 @@ StrWindowStart:
 
 ;------------------------------------------------------------------------------
 ; Code & data section start
-        SECTION "Org $100",HOME[$100]
+        SECTION "Org $100",ROM0[$100]
         nop
         jp      Begin
 ; Cart header
